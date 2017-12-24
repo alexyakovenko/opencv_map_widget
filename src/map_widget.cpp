@@ -178,6 +178,8 @@ public:
 		this->_drawn_frame.x = (int)this->origin.x + this->frame[orient].x, this->_drawn_frame.y = (int)this->origin.y + this->frame[orient].y, this->_drawn_frame.size_x = (int)this->origin.x + this->frame[orient].size_x, this->_drawn_frame.size_y = (int)this->origin.y + this->frame[orient].size_y;
 		}
 	}
+	//This method reset the widget drawn flag to -1
+	void reset_drawn_orient_flag(void) { this->_drawn_orient = (unsigned int)-1; }
     //This function undo the drawing
 	void erase(cv::Mat& background_image) {
 		if ( (this->_drawn_orient != (unsigned int)-1)) {
@@ -226,6 +228,7 @@ public :
 	cv::Mat background_image; //The background map image
     const coord2D_t<unsigned int>& window_size;    //Read-only map window size
 	const coord2D_t<unsigned int>& window_center;  //Read-only map center
+	const rect2D_t<unsigned int>&  window_proj;    //Read-only map window projection
 	const cv::Mat& image;     //The read-only output map image
 
 
@@ -233,6 +236,7 @@ public :
 	MapWidget(unsigned int window_center_x, unsigned int window_center_y, unsigned int window_size_x, unsigned int window_size_y, const cv::Mat& background_image) :
 		window_size(this->_window_size),
 		window_center(this->_window_center),
+		window_proj(this->_window_proj),
 		image(this->_image) {
     	if ( ((int)window_center_x >= background_image.cols) || ((int)window_center_y >= background_image.rows) ) throw("Incorrect map center requested");
     	else { this->_window_center.x = window_center_x, this->_window_center.y = window_center_y; }
@@ -263,11 +267,14 @@ public :
         cv::Mat fragment_dst(this->_image,           cv::Rect(this->_window_size.x/2 - this->_window_proj.x, this->_window_size.y/2 - this->_window_proj.y, this->_window_proj.x + this->_window_proj.size_x, this->_window_proj.y + this->_window_proj.size_y));
         fragment_src.copyTo(fragment_dst);
         //Draw markers
+        this->drawn_markers.clear();
         for ( unsigned int _i=0 ; _i != this->MapMarkerWidgets.size(); _i++ )
-        	if ( (this->marker_coords2D[_i].x >= this->_window_center.x - this->_window_proj.x) && (this->marker_coords2D[_i].x < this->_window_center.x + this->_window_proj.size_x) && (this->marker_coords2D[_i].y >= this->_window_center.y - this->_window_proj.y) && (this->marker_coords2D[_i].y < this->_window_center.y + this->_window_proj.size_x) ) {
-        		this->MapMarkerWidgets[_i]->set_origin(this->_window_size.x/2 + this->marker_coords2D[_i].x - this->_window_center.x, this->_window_size.y/2 + this->marker_coords2D[_i].y - this->_window_center.y), this->MapMarkerWidgets[_i]->draw(this->_image);
+        	if ( (this->marker_coords2D[_i].x >= this->_window_center.x - this->_window_proj.x) && (this->marker_coords2D[_i].x < this->_window_center.x + this->_window_proj.size_x) && (this->marker_coords2D[_i].y >= this->_window_center.y - this->_window_proj.y) && (this->marker_coords2D[_i].y < this->_window_center.y + this->_window_proj.size_y) ) {
+        		this->MapMarkerWidgets[_i]->set_origin(this->marker_coords2D[_i].x - this->_window_center.x + this->_window_size.x/2, this->marker_coords2D[_i].y - this->_window_center.y + this->_window_size.y/2);
+        		this->MapMarkerWidgets[_i]->draw(this->_image);
         		this->drawn_markers.push_back(_i);
             }
+        	else this->MapMarkerWidgets[_i]->reset_drawn_orient_flag();
     }
 
     //This method register photo widget in the map
@@ -305,7 +312,7 @@ public :
     		//Draw the marker
     		this->marker_coords2D[marker_id] = { x, y };
     		if ( (x >= this->_window_center.x - this->_window_proj.x) && (x < this->_window_center.x + this->_window_proj.size_x) && (y >= this->_window_center.y - this->_window_proj.y) && (y < this->_window_center.y + this->_window_proj.size_y) ) {
-    			this->MapMarkerWidgets[marker_id]->set_origin(x - this->_window_center.x + this->_window_proj.x, y - this->_window_center.y + this->_window_proj.y);
+    			this->MapMarkerWidgets[marker_id]->set_origin(x - this->_window_center.x + this->_window_size.x/2, y - this->_window_center.y + this->_window_size.y/2);
     			this->MapMarkerWidgets[marker_id]->draw(this->_image);
     		}
     	}
@@ -328,7 +335,9 @@ background_image = cv::imread(BACKGROUND_IMAGE, CV_LOAD_IMAGE_COLOR );
 
 cv::namedWindow( "OutputWindow", CV_WINDOW_AUTOSIZE );
 
-coord2D_t<unsigned int> map_origin = { .x= 4644, .y = 2422 };
+//coord2D_t<unsigned int> map_origin = { .x = 4644, .y = 2422 };
+//coord2D_t<unsigned int> map_origin = { .x = 0, .y = 0 };
+coord2D_t<unsigned int> map_origin = { .x = 5335, .y = 3263 };
 unsigned char color[3];
 
 //Create map widget
@@ -343,23 +352,22 @@ cv::waitKey(10);
 
 coord2D_t<unsigned int> markers_coord2D[4] = { { .x = map_origin.x, .y = map_origin.y }, { .x = map_origin.x, .y = map_origin.y }, { .x = map_origin.x, .y = map_origin.y }, { .x = map_origin.x, .y = map_origin.y } };
 std::srand(2004);
-for (unsigned int _i=0 ; _i!=100; _i++) {
+for (unsigned int _i=0 ; _i!=10000; _i++) {
 	//Map movement
-	if (!(_i%100)) { //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	if (!(_i%10)) {
 		bool flag = false;
-		coord2D_t<unsigned int> new_map_origin;
 		switch (std::rand() % 3) {
-			case  1 : { if (new_map_origin.x < map.background_image.cols - map.window_size.x/2 - 10) { new_map_origin.x+=10, flag = true; } break; }
-			case  2 : { if (new_map_origin.x > map.window_size.x/2 + 10)                             { new_map_origin.x-=10, flag = true; } break; }
+			case  1 : { if (map_origin.x < map.background_image.cols - map.window_size.x/2 - 10) { map_origin.x+=10, flag = true; } break; }
+			case  2 : { if (map_origin.x > map.window_size.x/2 + 10)                             { map_origin.x-=10, flag = true; } break; }
 			default : ;
 		}
 		switch (std::rand() % 3) {
-			case  1 : { if (new_map_origin.y < map.background_image.rows - map.window_size.y/2 - 10) { new_map_origin.y+=10, flag = true; } break; }
-			case  2 : { if (new_map_origin.y > map.window_size.y/2 + 10)                             { new_map_origin.y-=10, flag = true; } break; }
+			case  1 : { if (map_origin.y < map.background_image.rows - map.window_size.y/2 - 10) { map_origin.y+=10, flag = true; } break; }
+			case  2 : { if (map_origin.y > map.window_size.y/2 + 10)                             { map_origin.y-=10, flag = true; } break; }
 			default : ;
 		}
 		if ( (flag))
-			if (map.set_center(new_map_origin.x, new_map_origin.y) == +1)
+			if (map.set_center(map_origin.x, map_origin.y) == +1)
 				map.draw();
 	}
 	else {
@@ -367,13 +375,13 @@ for (unsigned int _i=0 ; _i!=100; _i++) {
 		for (unsigned int _j=0 ; _j!=4; _j++) {
 			bool flag = false;
 			switch (std::rand() % 3) {
-				case  1 : { if (markers_coord2D[_j].x < map_origin.x + map.window_size.x/2 - 1) { markers_coord2D[_j].x+=10, flag = true; } break; }
-				case  2 : { if (markers_coord2D[_j].x > map_origin.x - map.window_size.x/2 + 1) { markers_coord2D[_j].x-=10, flag = true; } break; }
+				case  1 : { if (markers_coord2D[_j].x <  map_origin.x + map.window_proj.size_x - 10) { markers_coord2D[_j].x+=10, flag = true; } break; }
+				case  2 : { if (markers_coord2D[_j].x >= map_origin.x - map.window_proj.x      + 10) { markers_coord2D[_j].x-=10, flag = true; } break; }
 				default : ;
 			}
 			switch (std::rand() % 3) {
-				case  1 : { if (markers_coord2D[_j].y < map_origin.y + map.window_size.y/2 - 1) { markers_coord2D[_j].y+=10, flag = true; } break; }
-				case  2 : { if (markers_coord2D[_j].y > map_origin.y - map.window_size.y/2 + 1) { markers_coord2D[_j].y-=10, flag = true; } break; }
+				case  1 : { if (markers_coord2D[_j].y <  map_origin.y + map.window_proj.size_y - 10) { markers_coord2D[_j].y+=10, flag = true; } break; }
+				case  2 : { if (markers_coord2D[_j].y >= map_origin.y - map.window_proj.y      + 10) { markers_coord2D[_j].y-=10, flag = true; } break; }
 				default : ;
 			}
 			if ( (flag)) map.marker_update(_j, markers_coord2D[_j].x, markers_coord2D[_j].y);
@@ -382,7 +390,7 @@ for (unsigned int _i=0 ; _i!=100; _i++) {
     cv::imshow( "OutputWindow", map.image);
 	cv::waitKey(10);
 
-	//cout << _i << "-th step\n" << endl;
+	cout << _i << "-th step\n" << endl;
 }
 
 cv::imshow( "OutputWindow", map.image);
